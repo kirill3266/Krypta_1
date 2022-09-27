@@ -6,53 +6,85 @@
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/io.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <chrono>
 
-void encrypt() {
+using namespace boost::numeric::ublas;
+
+//смещение: -1
+void encrypt(std::wstring &str, boost::numeric::ublas::matrix<wchar_t> &m, std::vector<int> &pos, int &shift) {
     std::array<wchar_t, 36> symbols = {L'а', L'б', L'в', L'г', L'д', L'е', L'ё', L'ж', L'з', L'и', L'й', L'к', L'л',
                                        L'м',
                                        L'н', L'о', L'п', L'р', L'с', L'т', L'у', L'ф', L'х', L'ц', L'ч', L'ш', L'щ',
                                        L'ъ',
                                        L'ы', L'ь', L'э', L'ю', L'я', L',', L'.', L' '};
-    std::array<bool, 36> exist{};
-    std::vector<int> pos;
-    std::fill(exist.begin(), exist.end(), false);
-    using namespace boost::numeric::ublas;
-    setlocale(LC_ALL, "ru_RU.UTF8");
-    std::wstring str;
-    std::wcout << L"Введите строку: ";
-    std::getline(std::wcin, str);
-    std::wcout << L"Вы ввели: " << str << std::endl;
-    boost::algorithm::to_lower(str, std::locale("ru_RU.UTF8"));
-    std::wcout << L"После форматирования: " << str << std::endl;
-    matrix<wchar_t> table_1(6, 6);
-    std::size_t counter = 0;
-    std::size_t len = str.length();
-    std::default_random_engine generator;
-    int i;
-    int j;
-    for (i = 0; i < table_1.size1(); ++i) {
-        for (j = 0; j < table_1.size2(); ++j) {
-            if (counter < len) {
-                table_1(i, j) = str[counter];
-                exist[std::distance(symbols.begin(), std::find(symbols.begin(), symbols.end(), str[counter++]))] = true;
+
+    std::array<bool, 36> exist = {};
+    std::default_random_engine generator(std::chrono::system_clock::now().time_since_epoch().count());
+    std::uniform_int_distribution<int> distribution(0, 35);
+    auto dice = std::bind(distribution, generator);
+    wchar_t ch;
+    //генерация диска
+    for (int i = 0; i < m.size1(); ++i) {
+        std::fill(exist.begin(), exist.end(), false);
+        for (int j = 0; j < m.size2(); ++j) {
+            while (true) {
+                ch = symbols[dice()];
+                if (!exist[std::distance(symbols.begin(), std::find(symbols.begin(), symbols.end(), ch))]) {
+                    m(i, j) = ch;
+                    if (ch == str[i]) pos[i] = j;
+                    exist[std::distance(symbols.begin(), std::find(symbols.begin(), symbols.end(), ch))] = true;
+                    break;
+                }
             }
         }
     }
-    for (const auto& k: exist)
-        if (!k) pos.push_back(std::distance(exist.begin(),k));
-    std::uniform_int_distribution<int> distribution(0,static_cast<int>(pos.size()));
-    auto dice = [&distribution, &generator]  { return distribution(generator); };
-    for (; i < table_1.size1(); ++i) {
-        for (; j < table_1.size2(); ++j) {
-            table(i,j) = symbols[]
-        }
+    std::wcout << L"Ключ: " << m << std::endl;
+    //выполнение смещения
+    for (int i = 0; i < pos.size(); ++i) {
+        pos[i] += shift;
+        while (pos[i] < 0) pos[i] += 36;
+        while (pos[i] > 35) pos[i] -= 36;
     }
-    std::wcout << L"Матрица: " << table_1 << std::endl;
+    for (int i = 0; i < str.length(); ++i)
+        str[i] = m(i, pos[i]);
+    std::wcout << L"Закодированное сообщение: " << str << std::endl;
+    //Частотный анализ
+    std::array<int,36> chast = {};
+    int aboba;
+    std::fill(chast.begin(),chast.end(),0);
+    for(auto i:str) {
+        chast[std::distance(symbols.begin(),std::find(symbols.begin(),symbols.end(),i))] += 1;
+    }
+    for(int i =0;i<chast.size();++i) {
+        if(chast[i]!=0)
+            std::wcout << symbols[i] << L": " << double(chast[i])/str.length() << L" ";
+    }
+    std::wcout << std::endl;
 }
 
-void decrypt() {}
+void decrypt(matrix<wchar_t> &m, std::vector<int> &pos, int shift) {
+    for (int i = 0; i < pos.size(); ++i) {
+        pos[i] -= shift;
+        while (pos[i] < 0) pos[i] += 36;
+        while (pos[i] > 35) pos[i] -= 36;
+    }
+    std::wstring str;
+    for (int i = 0; i < pos.size(); ++i)
+        str.push_back(m(i, pos[i]));
+    std::wcout << L"Раскодированное сообщение: " << str << std::endl;
+}
 
 int main() {
-    encrypt();
+    setlocale(LC_ALL, "ru_RU.UTF8");
+    std::wstring str;
+    int shift;
+    std::wcout << L"Введите строку для кодирования: ";
+    std::getline(std::wcin, str);
+    std::wcout << L"Введите смещение: ";
+    std::wcin >> shift;
+    matrix<wchar_t> m(str.length(), 36);
+    std::vector<int> pos(str.length());
+    encrypt(str, m, pos, shift);
+    decrypt(m,pos,shift);
     return 0;
 }
